@@ -205,7 +205,7 @@ void dfs_topsorting(index_t current, topsorting_vars& vars) {
 	vars.v.push_back(current);
 }
 
-std::vector<index_t> Graph::topsort(bool full, index_t from) {//Топологическая сортировка
+std::vector<index_t> Graph::topsort(bool full, index_t from) {//Топологическая сортировка (результат нужно перевернуть)
 	std::vector<index_t> v;
 	v.reserve(ncount);
 	logger::notify_malloc_message<index_t>(ncount, ARGS);//Примерно столько съедает вектор (в реальности немного больше)
@@ -340,7 +340,9 @@ path Graph::longest_path(name_t from, name_t to) {
 			distances[i] = MIN_LENGTH;
 			parents[i] = MIN_LENGTH;
 		}
-		//Реализация через топологическую сортировку. Для произвольной вершины A со множеством 
+		//Реализация через топологическую сортировку. Для произвольной вершины A со множеством B любой элемент
+		//из B будет стоять до элемента A в топологической сортировке.
+		//Поэтому алгоритм рабочий (в данном случае мы берём с конца перевёрнутую топологическую сортировку).
 		distances[from_idx] = 0;
 		while (topsorted.size() != 0) {
 			int v = topsorted.back();
