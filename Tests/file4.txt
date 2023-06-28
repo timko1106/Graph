@@ -1,0 +1,12 @@
+10
+A B C D E F G H I J
+4 B 1 C 1 D 1 E 1
+2 E 1 I 1
+2 D 1 H 1
+1 G 1
+2 D 1 F 1
+1 J 1
+2 F 1 J 1
+1 J 1
+1 J 1
+0

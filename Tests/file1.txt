@@ -1,0 +1,14 @@
+12
+A B C D E F G H I J K L
+4 B 1 C 1 D 1 E 1
+2 C 1 H 1
+2 F 1 G 1
+2 C 1 F 1
+2 D 1 F 1
+2 G 1 I 1
+1 I 1
+2 I 1 G 1
+2 K 1 J 1
+1 L 1
+1 L 1
+0
