@@ -45,7 +45,7 @@ public:
 	}
 	template<typename T>
 	static void notify_malloc_message(size_t size, const args& argc) {
-		if (descriptor != nullptr) fprintf(descriptor(), "size %zu, line = %d, function = %s, file = %s\n", size * sizeof(T), argc.line, argc.function, argc.filename);
+		if (descriptor() != nullptr) fprintf(descriptor(), "size %zu, line = %d, function = %s, file = %s\n", size * sizeof(T), argc.line, argc.function, argc.filename);
 		HEAP_USED() += size;
 	}
 	template <typename T>
