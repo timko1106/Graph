@@ -3,6 +3,7 @@
 
 #include "Graph.h"
 #include <fstream>
+#include <set>
 
 
 struct count_path_vars {
@@ -49,7 +50,7 @@ _size_t Graph::paths_count(name_t from, name_t to) {
 	//Состояния:
 	try {
 		_size_t* states = logger::malloc<_size_t>(ncount, ARGS);
-		index_t target = nmap.at(to)->index, from_idx = nmap.at(from)->index;
+		index_t target = nmap[to]->index, from_idx = nmap[from]->index;
 		for (int i = 0; i < ncount; ++i)states[i] = CLEAR;
 		_size_t count = dfs_path(from_idx, { target, states, *this });
 		delete[] states;
@@ -186,7 +187,7 @@ std::ostream& operator<< (std::ostream& os, const path& p) {//Вывод пут�
 struct topsorting_vars {//Переменные для топологической сортировки (выносить в глобальные очень нехорошо)
 	bool* visited;
 	const Graph& g;
-	std::vector<index_t>& v;
+	std::vector<index_t, logger::Allocator<index_t>>& v;
 };
 
 /// <summary>
@@ -205,10 +206,9 @@ void dfs_topsorting(index_t current, topsorting_vars& vars) {
 	vars.v.push_back(current);
 }
 
-std::vector<index_t> Graph::topsort(bool full, index_t from) {//Топологическая сортировка (результат нужно перевернуть)
-	std::vector<index_t> v;
+std::vector<index_t, logger::Allocator<index_t>> Graph::topsort(bool full, index_t from) {//Топологическая сортировка (результат нужно перевернуть)
+	std::vector<index_t, logger::Allocator<index_t>> v;
 	v.reserve(ncount);
-	logger::notify_malloc_message<index_t>(ncount, ARGS);//Примерно столько съедает вектор (в реальности немного больше)
 	bool* visited = logger::malloc<bool>(ncount, ARGS);
 	for (int i = 0; i < ncount; ++i)visited[i] = false;
 	topsorting_vars variables = { visited, *this, v };
@@ -222,118 +222,88 @@ std::vector<index_t> Graph::topsort(bool full, index_t from) {//Топологи
 	else {
 		dfs_topsorting(from, variables);
 	}
-	delete[] visited;
+	logger::free<bool> (visited, ncount, ARGS);
 	return v;
 }
 
 path Graph::shortest_path(name_t from, name_t to) {
-	//Дейкстра O(N^2+M) (реализовано через поиск в ширину)
-	try {
-		index_t from_idx = nmap.at(from)->index, to_idx = nmap.at(to)->index;
-		_size_t* distances = logger::malloc<_size_t>(ncount, ARGS);//Массив расстояний до точки
-		index_t* parents = logger::malloc<index_t>(ncount, ARGS);//Массив предков для восстановления пути
-		bool* used = logger::malloc<bool>(ncount, ARGS);
-		for (index_t i = 0; i < ncount; ++i) {
-			distances[i] = MAX_LENGTH;
-			used[i] = false;
-			parents[i] = MAX_LENGTH;
-		}
-		{
-			index_t* current_indexes = logger::malloc<index_t>(ncount, ARGS);//эмуляция стэка через массив фиксированного размера.
-			index_t* stopped_road_idx = logger::malloc<index_t>(ncount, ARGS);
-			_size_t size = 1;
-			current_indexes[0] = from_idx;
-			stopped_road_idx[0] = 0;
-			distances[from_idx] = 0;
-			while (size) {
-			BEGIN:
-				index_t curr = current_indexes[size - 1];
-				auto& node = nodes[curr];
-				used[curr] = true;
-				for (index_t j = stopped_road_idx[size - 1]; j < node.ncount; ++j) {
-					auto& road = node.roads[j];
-					if (used[road.to->index])continue;
-					if (distances[road.to->index] > distances[curr] + road.size) {
-						stopped_road_idx[size - 1] = j;
-						stopped_road_idx[size] = 0;
-						current_indexes[size] = road.to->index;
-						distances[road.to->index] = distances[curr] + road.size;
-						parents[road.to->index] = curr;
-						++size;
-						goto BEGIN;
-					}
-				}
-				used[curr] = false;
-				stopped_road_idx[size - 1] = 0;
-				--size;
-			}
-			/*
-			for (int i = 0; i < ncount; ++i) {
-				printf("%c ", nodes[i].name);
-			}
-			printf("\n");
-			for (int i = 0; i < ncount; ++i) {
-				printf("%d ", distances[i]);
-			}
-			printf("\n");
-			for (int i = 0; i < ncount; ++i) {
-				printf("%d ", parents[i]);
-			}
-			printf("\n");*/
-			delete[] current_indexes;
-			delete[] stopped_road_idx;
-		}
-		index_t route[MAX_NODES_COUNT] = {};
-		int sizes[MAX_NODES_COUNT] = {};
-		size_t size{ 0 };
-		for (int v = to_idx; v != from_idx; v = parents[v]) {
-			route[size] = v;
-			sizes[size] = distances[v] - distances[parents[v]];
-			++size;
-			if (parents[v] == MAX_LENGTH) {
-				size = 0;
-				break;
-			}
-		}
-		path res{};
-		if (size == 0) {
-			res.roads = nullptr;
-			res.ncount = 0;
-			res.length = 0;
-			goto FREE;
-		}
-		{
-			res.roads = logger::malloc<Road>(size, ARGS);
-			res.ncount = size;
-			res.roads[0].to = &(nodes[route[size - 1]]);
-			res.roads[0].size = sizes[size - 1];
-			res.roads[0].from = &(nodes[from_idx]);
-			res.length = sizes[0];
-			{
-				int j = 1;
-				for (int i = size - 2; i >= 0; --i) {
-					res.roads[j].to = &(nodes[route[i]]);
-					res.roads[j].size = sizes[i];
-					res.roads[j].from = res.roads[j - 1].to;
-					res.length += sizes[i];
-					++j;
-				}
-			}
-		}
-	FREE:
-		delete[] distances;
-		delete[] parents;
-		delete[] used;
-		return res;
-	}catch(...) {
-		return path();
+	//Дейкстра за O ((N + M)log N), где N - кол-во вершин, M - кол-во рёбер.
+	index_t from_idx = nmap[from]->index, to_idx = nmap[to]->index;
+	_size_t* distances = logger::malloc<_size_t>(ncount, ARGS);//Массив расстояний до точки
+	index_t* parents = logger::malloc<index_t>(ncount, ARGS);//Массив предков для восстановления пути
+	bool* used = logger::malloc<bool>(ncount, ARGS);
+	for (index_t i = 0; i < ncount; ++i) {
+		distances[i] = MAX_LENGTH;
+		used[i] = false;
+		parents[i] = MAX_LENGTH;
 	}
+	std::set<std::pair<_size_t, int>> q{};
+	q.insert ({0, from_idx});
+	distances[from_idx] = 0;
+	while (!q.empty ()) {
+		int v = q.begin ()->second;
+		_size_t base = distances[v];
+		q.erase (q.begin ());
+		for (int i = 0; i < nodes[v].ncount; ++i) {
+			int u = nodes[v].roads[i].to->index;
+			_size_t w = nodes[v].roads[i].size;
+			if (distances[u] > base + w) {
+				q.erase ({distances[u], u});
+				distances[u] = base + w;
+				parents[u] = v;
+				q.insert ({distances[u], u});
+			}
+		}
+	}
+	index_t route[MAX_NODES_COUNT] = {};
+	int sizes[MAX_NODES_COUNT] = {};
+	size_t size{ 0 };
+	for (int v = to_idx; v != from_idx; v = parents[v]) {
+		route[size] = v;
+		sizes[size] = distances[v] - distances[parents[v]];
+		++size;
+		if (parents[v] == MAX_LENGTH) {
+			size = 0;
+			break;
+		}
+	}
+	path res{};
+	if (size == 0) {
+		res.roads = nullptr;
+		res.ncount = 0;
+		res.length = 0;
+		goto FREE;
+	}
+	{
+		res.roads = logger::malloc<Road>(size, ARGS);
+		res.ncount = size;
+		res.roads[0].to = &(nodes[route[size - 1]]);
+		res.roads[0].size = sizes[size - 1];
+		res.roads[0].from = &(nodes[from_idx]);
+		res.length = sizes[0];
+		{
+			int j = 1;
+			for (int i = size - 2; i >= 0; --i) {
+				res.roads[j].to = &(nodes[route[i]]);
+				res.roads[j].size = sizes[i];
+				res.roads[j].from = res.roads[j - 1].to;
+				res.length += sizes[i];
+				++j;
+			}
+		}
+	}
+FREE:
+	logger::free<_size_t> (distances, ncount, ARGS);
+	logger::free<index_t> (parents, ncount, ARGS);
+	logger::free<bool> (used, ncount, ARGS);
+	return res;
 }
 
 path Graph::longest_path(name_t from, name_t to) {
 	try {
-		index_t from_idx = nmap.at(from)->index, to_idx = nmap.at(to)->index;
-		std::vector<index_t> topsorted(topsort(false, from_idx));//В реальности полная топологическая сортировка не нужна. 
+		index_t from_idx = nmap[from]->index, to_idx = nmap[to]->index;
+		std::vector<index_t, logger::Allocator<index_t>> topsorted (topsort (false, from_idx));
+		//Полагаем, что цикла нет. Иначе нужно уточнять понятие "самый длинный путь".
 		_size_t* distances = logger::malloc<_size_t>(ncount, ARGS);
 		index_t* parents = logger::malloc<index_t>(ncount, ARGS);
 		for (int i = 0; i < ncount; ++i) {
@@ -397,8 +367,8 @@ path Graph::longest_path(name_t from, name_t to) {
 			}
 		}
 	FREE:
-		delete[] distances;
-		delete[] parents;
+		logger::free<_size_t> (distances, ncount, ARGS);
+		logger::free<index_t> (parents, ncount, ARGS);
 		return res;
 	} catch (...) {
 		return {};
