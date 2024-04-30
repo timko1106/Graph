@@ -55,10 +55,11 @@ _size_t dfs_path(index_t curr, const count_path_vars& vars) {
 _size_t Graph::paths_count(name_t from, name_t to) const {
 	//Состояния:
 	_size_t* states = logger::malloc<_size_t>(ncount, ARGS);
-	if (nmap[to] == nullptr || nmap[from] == nullptr) {
+	node_ptr to_ = this->at (to), from_ = this->at (from);
+	if (to_ == nullptr || from_ == nullptr) {
 		return 0;
 	}
-	index_t target = nmap[to]->index, from_idx = nmap[from]->index;
+	index_t target = to_->index, from_idx = from_->index;
 	for (int i = 0; i < ncount; ++i) {
 		states[i] = CLEAR;
 	}
@@ -124,8 +125,10 @@ void Graph::invert() {
 /// <param name="filename">Путь к файлу, где находится граф</param>
 /// <returns>0 - если граф прочитан успешно. 1 - если не удалось открыть.</returns>
 int read(Graph& g, const char* filename) {
-	std::fstream in(filename, std::ios_base::in);
-	if (!in.is_open())return 1;
+	std::fstream in  (filename, std::ios_base::in);
+	if (!in.is_open()) {
+		return 1;
+	}
 	int N;
 	in >> N;
 	g.resize (N);
@@ -134,7 +137,7 @@ int read(Graph& g, const char* filename) {
 		in >> name;
 		g.nodes[i].name = name;
 		g.nodes[i].index = i;
-		g.nmap[name] = &(g.nodes[i]);
+		g.at (name) = &(g.nodes[i]);
 	}
 	for (int i = 0; i < N; ++i) {
 		int K;
@@ -150,7 +153,7 @@ int read(Graph& g, const char* filename) {
 			name_t to;
 			int size;
 			in >> to >> size;
-			index_t to_idx = g.nmap[to]->index;
+			index_t to_idx = g.at (to)->index;
 			curr->roads[j].from = curr;
 			curr->roads[j].to = g.nodes + to_idx;
 			curr->roads[j].size = size;
@@ -165,6 +168,9 @@ int read(Graph& g, const char* filename) {
 /// <param name="other"></param>
 /// <returns>путь №1</returns>
 path& path::operator+= (const path& other) {
+	if (ncount == 0 && other.ncount == 0) {
+		return *this;
+	}
 	Road* __roads = logger::malloc<Road>(ncount + other.ncount, ARGS);
 	for (int i = 0; i < ncount; ++i) {
 		__roads[i] = this->roads[i];
@@ -191,7 +197,9 @@ path path::operator+(const path& other) const {
 
 std::ostream& operator<< (std::ostream& os, const path& p) {//Вывод пути
 	//&p != nullptr (UB)
-	if (p.ncount == 0) return os << "Path not found";
+	if (p.ncount == 0) {
+		return os << "Path not found";
+	}
 	os << p.roads[0].from->name;
 	for (int i = 0; i < p.ncount; ++i)os << " -> " << p.roads[i].to->name;
 	return os;
@@ -242,11 +250,12 @@ std::vector<index_t, logger::Allocator<index_t>> Graph::topsort(bool full, index
 }
 
 path Graph::shortest_path(name_t from, name_t to) const {
-	if (nmap[from] == nullptr || nmap[to] == nullptr) {
+	node_ptr from_ = this->at (from), to_ = this->at (to);
+	if (from_ == nullptr || to_ == nullptr) {
 		return path{};
 	}
 	if (from == to) {
-		index_t idx = nmap[from]->index;
+		index_t idx = from_->index;
 		path res{};
 		res.roads = logger::malloc<Road> (1, ARGS);
 		res.roads->from = nodes + idx;
@@ -257,7 +266,7 @@ path Graph::shortest_path(name_t from, name_t to) const {
 		return res;
 	}
 	//Дейкстра за O ((N + M)log N), где N - кол-во вершин, M - кол-во рёбер.
-	index_t from_idx = nmap[from]->index, to_idx = nmap[to]->index;
+	index_t from_idx = from_->index, to_idx = to_->index;
 	_size_t* distances = logger::malloc<_size_t>(ncount, ARGS);//Массив расстояний до точки
 	index_t* parents = logger::malloc<index_t>(ncount, ARGS);//Массив предков для восстановления пути
 	bool* used = logger::malloc<bool>(ncount, ARGS);
@@ -337,11 +346,12 @@ FREE:
 }
 
 path Graph::longest_path(name_t from, name_t to) const {
-	if (nmap[from] == nullptr || nmap[to] == nullptr) {
+	node_ptr from_ = this->at (from), to_ = this->at (to);
+	if (from_ == nullptr || to_ == nullptr) {
 			return path{};
 	}
 	if (from == to) {
-		index_t idx = nmap[from]->index;
+		index_t idx = from_->index;
 		path res{};
 		res.roads = logger::malloc<Road> (1, ARGS);
 		res.roads->from = nodes + idx;
@@ -351,7 +361,7 @@ path Graph::longest_path(name_t from, name_t to) const {
 		res.length = 0;
 		return res;
 	}
-	index_t from_idx = nmap[from]->index, to_idx = nmap[to]->index;
+	index_t from_idx = from_->index, to_idx = to_->index;
 	std::vector<index_t, logger::Allocator<index_t>> topsorted (topsort (false, from_idx));
 	//Полагаем, что цикла нет. Иначе нужно уточнять понятие "самый длинный путь".
 	_size_t* distances = logger::malloc<_size_t>(ncount, ARGS);

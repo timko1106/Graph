@@ -2,7 +2,11 @@
 #define GRAPH_H
 
 #include <stdio.h>
-
+#include <iosfwd>
+#include <vector>
+#include <cstring>
+#include <cstdint>
+#include <utility>
 
 #ifndef __FUNCTION_NAME__
 #ifdef _WIN32   //WINDOWS
@@ -87,12 +91,6 @@ public:
 };
 
 
-#include <map>
-#include <iosfwd>
-#include <vector>
-#include <cstring>
-#include <cstdint>
-using std::map;
 
 const size_t MAX_NODES_COUNT = 26;
 const int MAX_LENGTH = (1 << 31) - 1;//01111111111111111111111111111111=2^31-1
@@ -108,11 +106,30 @@ struct node {
 	struct road {//Дорога. Хранится исходный, конечный пункт и длина
 		node * from{ nullptr }, * to{ nullptr };
 		_size_t size = 1;
+		~road () {}
 	};
 	road *roads = nullptr;
 	_size_t ncount = 0;
 	name_t name{ '\00' };
 	index_t index = 0;
+	node () {}
+	node (const node& other) : ncount (other.ncount) {
+		roads = (ncount ? logger::malloc<road>(ncount, ARGS) : nullptr);
+		for (int i = 0; i < ncount; ++i) {
+			roads[i] = other.roads[i];
+		}
+	}
+	node& operator= (const node& other) {
+		if (ncount) {
+			logger::free<road> (roads, ncount, ARGS);
+		}
+		ncount = other.ncount;
+		roads = (ncount ? logger::malloc<road> (ncount, ARGS) : nullptr);
+		for (int i = 0; i < ncount; ++i) {
+			roads[i] = other.roads[i];
+		}
+		return (*this);
+	}
 	~node() {
 		if (roads != nullptr) {
 			logger::free (roads, ncount, ARGS);
@@ -130,8 +147,10 @@ struct path {
 	path& operator+= (const path& other);
 	path operator+(const path& other) const;
 	path() : roads(nullptr), ncount(0), length(0) {}
-	path(const path& other) : roads(logger::malloc<Road>(other.ncount, ARGS)), ncount(other.ncount), length(other.length) {
-		memcpy(roads, other.roads, sizeof(Road) * ncount);//Полное копирование
+	path(const path& other) : roads(other.ncount ? logger::malloc<Road>(other.ncount, ARGS) : nullptr), ncount(other.ncount), length(other.length) {
+		for (int i = 0; i < ncount; ++i) {
+			roads[i] = other.roads[i];
+		}
 	}
 	~path() {
 		if (roads != nullptr) {
@@ -141,32 +160,72 @@ struct path {
 };
 std::ostream& operator<< (std::ostream& os, const path& p);
 
-//Структура копируется проще статического массива.
-template<typename T, size_t size>
-struct proxy_array {
-	T arr[size] = {};
-	operator const T*() const {
-		return static_cast<const T*>(arr);
-
-	}
-	operator T* () {
-		return static_cast<T*>(arr);
-	}
-};
 
 //В C++ разница между структурами и классами только в модификаторах доступа по умолчанию.
 struct Graph {
-	proxy_array<node, MAX_NODES_COUNT> nodes;
-	node_ptr nmap[256] = {};
-	//map<name_t, node*> nmap;
+	node_ptr nmap[256] = {};//Указатели очень тяжёлые.
+	node* nodes;
 	_size_t ncount = 0;
-	_size_t paths_count(name_t from, name_t to);
-	path shortest_path(name_t from, name_t to);
-	path longest_path(name_t from, name_t to);
-	std::vector<index_t, logger::Allocator<index_t>> topsort(bool full = false, index_t from = CLEAR);
-	void invert();
+	inline const node_ptr at (name_t name) const {
+		return nmap[name];
+	}
+	inline node_ptr& at (name_t name) {
+		return nmap[name];
+	}
+	Graph (int nodes_count = 0) : 
+		nodes (nodes_count ? logger::malloc<node> (nodes_count, ARGS) : nullptr),
+			ncount (nodes_count) {
+		memset (nmap, 0, sizeof (nmap));
+	}
+	/*Graph (const Graph& other) {
+		ncount = other.ncount;
+		nodes = (ncount ? logger::malloc<node> (ncount, ARGS) : nullptr);
+		memset (nmap, 0, sizeof (nmap));
+		for (int i = 0; i < ncount; ++i) {
+			nodes[i] = other.nodes[i];
+			nmap[nodes[i].name] = &(nodes[i]);
+		}
+	}*/
+	Graph (Graph&& other) : nodes (other.nodes), ncount (other.ncount) {
+		memcpy (nmap, other.nmap, sizeof (nmap));
+		memset (other.nmap, 0, sizeof (nmap));
+		other.ncount = 0;
+		other.nodes = nullptr;
+	}
+	Graph& operator= (Graph&& other) {
+		if (nodes) {
+			logger::free<node> (nodes, ncount, ARGS);
+		}
+		memcpy (nmap, other.nmap, sizeof (nmap));
+		ncount = other.ncount;
+		nodes = other.nodes;
+		other.ncount = 0;
+		other.nodes = nullptr;
+		return (*this);
+	}
+	void resize (int new_ncount) {
+		if (ncount) {
+			logger::free<node> (nodes, ncount, ARGS);
+		}
+		if (new_ncount) {
+			nodes = logger::malloc<node> (new_ncount, ARGS);
+		} else {
+			nodes = nullptr;
+		}
+		ncount = new_ncount;
+	}
+	~Graph () {
+		if (nodes != nullptr) {
+			logger::free<node> (nodes, ncount, ARGS);
+		}
+	}
+	_size_t paths_count (name_t from, name_t to) const;
+	path shortest_path (name_t from, name_t to) const;
+	path longest_path (name_t from, name_t to) const;
+	std::vector<index_t, logger::Allocator<index_t>> topsort (bool full = false, index_t from = CLEAR) const;
+	void invert ();
 };
 
-int read(Graph& g, const char* filename);
+int read (Graph& g, const char* filename);
 
 #endif
